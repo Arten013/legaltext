@@ -1,19 +1,28 @@
-from EtreeLaw import EtreeLaw
 from collections import Counter
 import asyncio
-from LawError import *
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from PostgresLaw import PostgresLaw
-from PostgresRegisterMethods import PostgresRegisterMethods
+import PostgresTables as ts
 
-if __name__ != "__main__":
+if __name__ == "__main__":
+    from TextIO import kansuji2arabic as kan_ara, find_all_files
+    from PostgresLaw import PostgresLaw
+    from PostgresRegisterMethod import PostgresRegisterMethod
+    from LawError import *
+    from EtreeLaw import EtreeLaw
+    from EType import BASIC_ETYPE_SET
+    import asyncpg
+else:
     from .TextIO import kansuji2arabic as kan_ara
-    import PostgresTables as ts
+    from .PostgresLaw import PostgresLaw
+    from .PostgresRegisterMethod import PostgresRegisterMethod
+    from .LawError import *
+    from .EtreeLaw import EtreeLaw
 
-PARENT_CLASSES = [EtreeLaw, PostgresLaw, PostgresRegisterMethods]
+PARENT_CLASSES = [EtreeLaw, PostgresLaw, PostgresRegisterMethod]
 class Law(*PARENT_CLASSES):
     async def register(self, conn=None, string_table_flag=False):
         conn = self.conn if conn is None else conn
+
 
         # 読み込みしてない場合はraise
         if self.root is None:
@@ -26,36 +35,44 @@ class Law(*PARENT_CLASSES):
             return
 
         # 未登録の場合
-        # 本体の登録
-        await self.register_law(conn)
-        self.oid = await self.search_oid(conn)
-        await self.register_decendants(conn)
+        # 本体の登録            
+        await self.transaction_begin(conn)
+        try:
+            await self.register_law(conn)
+            self.oid = await self.search_oid(conn)
 
-        # LawElementsの登録
-        for elem in self.root.iter_descendants():
-            await self.register_elements(conn, elem)
-            elem.id = await self.search_elements(conn, elem)
+            # LawElementsの登録
+            for elem in self.root.iter_descendants():
+                await self.register_elements(conn, elem)
+                elem.id = await self.search_elements(conn, elem)
 
-            # stringを別登録する場合
-            if string_table_flag:
-                for snum, text in enumerate(elem.texts):
-                    sid = await self.search_string(conn, text)
-                    if sid is None:
-                        await self.register_string(conn, text)
+                # stringを別登録する場合
+                if string_table_flag:
+                    for snum, text in enumerate(elem.texts):
                         sid = await self.search_string(conn, text)
-                    await self.register_string_edge(conn, text, sid, snum)
+                        if sid is None:
+                            await self.register_string(conn, text)
+                            sid = await self.search_string(conn, text)
+                        await self.register_string_edge(conn, text, sid, snum)
+            await self.transaction_end()
+            print("commit:", self.name)
+            return self
+        except:
+            await self.transaction_end(rollback=True)
+            print("rollback:", self.name)
+            raise
+            return None
 
-        print("reg:", self.name)
-        return self
               
 
-def get_lawdata(path, usr, db):
+async def get_lawdata(path, usr, db):
     try:
         ld = Law()
-        ld.connect(user=usr, database=db)
         ld.load_from_path(path)
+        await ld.async_connect(user=usr, database=db)
         return ld
     except:
+        raise
         return None
 
 def fill_ap_table(path_list):
@@ -83,25 +100,29 @@ def fill_ap_table(path_list):
     print("Extracted {0} files ({1} error raised)".format(file_count, err_count))
     print("Registered {0} articles and {1} paragraphs".format(article_count, paragraph_count))
 
-def init_gov_tables(conn, csv_path):
+async def init_tables(conn, csv_path, loop=None):
+    loop = asyncio.get_event_loop() if loop is None else loop
+    await conn.execute(ts.PREF_TABLE+ts.MUNI_TABLE+ts.ORD_TABLE+ts.ELEMENTS_TABLE)
     with open(csv_path) as f:
         reader = csv.reader(f)
         mc2pc = lambda mc: int(int(mc)/10000)
         next(reader)
-        gen = ([mc2pc(mc), pn, int(mc), mc2pc(mc), mn] for mc, pn, mn, _, _ in reader)
-        conn.conn.cursor().executemany("REPLACE INTO prefectures VALUES(?, ?); INSERT INTO municipalities VALUES(?, ?, ?)", gen)
+        prefectures = dict()
+        municipalities = []
+        for mc, pn, mn, _, _ in reader:
+            prefectures[pn] = mc2pc(mc)
+            municipalities.append([int(mc), mc2pc(mc), mn])
+    async with conn.transaction():
+        for pn, pc in prefectures.items():
+            await conn.execute("INSERT INTO prefectures(id, name) VALUES($1, $2);", pc, pn)
+        for args in municipalities:
+            await conn.execute("INSERT INTO municipalities(id, pref_id, name) VALUES($1, $2, $3)", *args)
 
-def init_tables(conn):
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(conn.execute(ts.PREF_TABLE+ts.MUNI_TABLE+ts.ORD_TABLE+ts.ELEMENTS_TABLE))
 
 
 if __name__ == '__main__':
-    from TextIO import kansuji2arabic as kan_ara, find_all_files
-    from LawElementBase import BASIC_ETYPE_SET
     import os
     import csv
-    import PostgresTables as ts
     import glob
     import re
 
@@ -109,19 +130,19 @@ if __name__ == '__main__':
     TEST_USER = "KazuyaFujioka"
 
     #os.remove(TEST_DBFILE)
-    GOV_PATH = os.path.join(os.path.dirname(__file__), "municode.csv")
-    conn = asyncpg.connect(user=TEST_USER, database=TEST_DB)
-    #conn.set_exectracer(asq._exec_tracer)
-    #conn.set_rowtracer(asq._row_tracer)
-    init_tables(conn)
-    #conn.conn.close()
-    init_gov_tables(conn, GOV_PATH)
-    conn.close()
+    async def test_init():
+        GOV_PATH = os.path.join(os.path.dirname(__file__), "municode.csv")
+        conn = await asyncpg.connect(user=TEST_USER, database=TEST_DB)
+        await conn.execute("DROP TABLE prefectures, ordinances, municipalities, elements;")
+        await init_tables(conn, GOV_PATH)
+        await conn.close()
 
-    def register_reikis_from_directory(path, conn):
+    loop = asyncio.get_event_loop()
+    #loop.run_until_complete(test_init())
+
+    def register_reikis_from_directory(path, db, user):
         loop = asyncio.get_event_loop()
-        #conn.set_exectracer(asq._exec_tracer)
-        #conn.set_rowtracer(asq._row_tracer)
+
         async def fgather(*futures):
             done, pending = await asyncio.wait(futures)
             print("done:", len(done), "pend", len(pending))
@@ -130,6 +151,7 @@ if __name__ == '__main__':
                     print("reg:", d.result())
                 except Exception as e:
                     print(str(e))
+
         def _path_proc(root, dirs, files, extentions):
             if extentions is None or os.path.splitext(root)[1] in extentions:
                     yield root
@@ -145,30 +167,43 @@ if __name__ == '__main__':
             for root, dirs, files in os.walk(directory):
                 yield loop.run_in_executor(executor, _path_proc, root, dirs, files, extentions)
 
-        async def reg_from_path(path):
+        async def register(l, db, user):
+            try:
+                await l.async_connect(user=user, database=db)
+                await asyncio.ensure_future(l.register())
+                ret = l
+            except Exception as e:
+                print(str(e))
+                ret = None
+            finally:
+                if "conn" in l.__dict__:
+                    await l.async_close()
+                return ret
+
+        async def reg_from_path(path, db, user):
             loop = asyncio.get_event_loop()
             laws = []
-            for pf in enqueue_all_files(path, [".xml"]):
-                futures = []
-                await conn.connect()
-                await asyncio.wait([pf])
-                for path in pf.result():
-                    l = get_lawdata(path)
-                    if l is None:
-                        continue
-                    if not l.is_reiki():
-                        continue
-                    #print(l)
-                    future = asyncio.ensure_future(l.register(conn))
-                    #f.set_exception(LawError(l))
-                    futures.append(future)
-                    laws.append(l)
-                await fgather(*futures)
-                await conn.close()
+            with ThreadPoolExecutor(3) as executor:
+                for pf in enqueue_all_files(path, [".xml"]):
+                    futures = []
+                    load_futures = []
+                    loading_laws = []
+                    await asyncio.wait([pf])
+                    for path in pf.result():
+                        l = Law()
+                        load_futures.append(loop.run_in_executor(executor, l.load_from_path, path))
+                        loading_laws.append(l)
+                    for f, l in zip(load_futures, loading_laws):
+                        await f
+                        if not l.is_reiki():
+                            continue
+                        print(l)
+                        futures.append(register(l, db, user))
+                    laws.extend(await asyncio.wait(futures))
             return laws
 
         print("run")
-        f = asyncio.ensure_future(reg_from_path(path))
+        f = asyncio.ensure_future(reg_from_path(path, db, user))
         loop.run_until_complete(f)
         print("end")
         return f.result()
@@ -199,7 +234,7 @@ if __name__ == '__main__':
         for ename in BASIC_ETYPE_SET:
             print(ename, c[ename])
 
-    register_reikis_from_directory("/Users/KazuyaFujioka/Documents/all_data/23/230006/")
+    register_reikis_from_directory("/Users/KazuyaFujioka/research/legaltext/testset/23/230006", TEST_DB, TEST_USER)
     #register_all("/Users/KazuyaFujioka/Documents/all_data/", conn)
     #ll = [get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/{0:04}.xml".format(i)) for i in range(1,100)]
     #l1 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0001.xml")

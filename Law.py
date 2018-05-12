@@ -164,6 +164,7 @@ if __name__ == '__main__':
                     future = asyncio.ensure_future(l.register(conn))
                     #f.set_exception(LawError(l))
                     futures.append(future)
+                    await self.l.async_close()
                     laws.append(l)
                 await fgather(*futures)
                 await conn.close()
