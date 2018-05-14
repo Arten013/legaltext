@@ -25,7 +25,7 @@ class PostgresRegisterMethod(object):
     async def search_elements(self, conn, elem):
         return await conn.fetchval(
             "SELECT id FROM elements WHERE parent_id=$1 AND etype=$2 AND num=$3;",
-            elem.parent.id, elem.etype, str(elem.num.num)
+            elem.parent.id, elem.etype, elem.num.num
             )
 
     async def register_elements(self, conn, elem):
@@ -33,13 +33,13 @@ class PostgresRegisterMethod(object):
             INSERT INTO elements(parent_id, ord_id, etype, num, content)
             VALUES($1, $2, $3, $4, $5);
             """,
-            elem.parent.id, self.oid, elem.etype, str(elem.num.num), "".join(elem.texts)
+            elem.parent.id, self.oid, elem.etype, elem.num.num, "".join(elem.texts)
             )
 
     async def search_string(self, conn, s):
         return await conn.fetchval("SELECT id FROM strings WHERE string=$1;", s)
 
-    async def register_strings(self, conn, s):
+    async def register_string(self, conn, s):
         await conn.execute("""INSERT INTO strings(string) VALUES($1);""", s)
 
     async def register_string_edge(self, conn, elem, sid, snum):

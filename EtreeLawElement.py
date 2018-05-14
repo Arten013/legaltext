@@ -5,7 +5,9 @@ from EType import ETYPES, ETYPES_DICT
 from decimal import Decimal
 from xml.etree.ElementTree import Element
 from LawElementNumber import LawElementNumber
-from mojimoji import zen_to_han
+#from mojimoji import zen_to_han
+import asyncio
+import concurrent.futures
 
 get_text = lambda b, e_val: b.text if b is not None and b.text else e_val
 
@@ -16,6 +18,17 @@ class ETreeLawElementBase(LawElementBase):
 
     def _iter_possible_children(self):
         for f in self.root.findall("./*"):
+            if f.tag not in ETYPES:
+                continue
+            child = globals()[f.tag](lawdata=self.lawdata, parent=self)
+            child.inheritance(f)
+            yield child
+
+    async def _async_iter_possible_children(self):
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(1) as e:
+            future = await loop.run_in_executor(e, self.root.findall, "./*")
+        for f in future:
             if f.tag not in ETYPES:
                 continue
             child = globals()[f.tag](lawdata=self.lawdata, parent=self)
@@ -37,6 +50,17 @@ class Root(RootBase, ETreeLawElementBase):
             child.inheritance(f)
             yield child
 
+    async def _async_iter_possible_children(self):
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(1) as e:
+            future = await loop.run_in_executor(e, self.root.findall, "Law/LawBody/*")
+        for f in future:
+            if f.tag not in ETYPES:
+                continue
+            child = globals()[f.tag](lawdata=self.lawdata, parent=self)
+            child.inheritance(f)
+            yield child
+
     def get_law_name(self):
         return get_text(self.root.find('Law/LawBody/LawTitle'), 'UNK')
         
@@ -44,7 +68,8 @@ class Root(RootBase, ETreeLawElementBase):
         raw_text = get_text(self.root.find('Law/LawNum'), 'UNK')
         if raw_text is None:
             return None
-        tmp = zen_to_han(raw_text, kana=False, ascii=False)
+        #tmp = zen_to_han(raw_text, kana=False, ascii=False)
+        tmp = raw_text
         re.sub("\s", "", tmp)
         text = kan_ara(tmp)
         return text

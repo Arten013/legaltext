@@ -24,7 +24,6 @@ class PostgresLaw(LawAbstCls):
         await self.conn.close()
         del self.conn
         PostgresLaw.conn_counter -= 1
-        print("close connection")
 
     def connect(self, *args, **kwargs):
         self.loop = asyncio.get_event_loop()

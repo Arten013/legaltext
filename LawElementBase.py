@@ -39,6 +39,9 @@ class LawElementBase(metaclass=ABCMeta):
 			return True
 		return False
 
+	def is_text(self):
+		return False
+
 	# 文書構造が正しいかのチェック
 	def structure_check(self):
 		self.parent_check()
@@ -83,12 +86,36 @@ class LawElementBase(metaclass=ABCMeta):
 				self.child_etype = ce.__class__.__name__
 		raise StopIteration()
 
+	# 子をイテレート
+	async def async_iter_children(self, error_ok=False):
+		if self._child is not None:
+			for ce in self._child:
+				yield ce
+			return
+		self._child = []
+		async for ce in self._async_iter_possible_children():
+			if self._check_child(ce, error_ok):
+				yield ce
+				self._child.append(ce)
+				self.child_etype = ce.__class__.__name__
+		return
+
 	# 子孫をすべてイテレート
 	def iter_descendants(self, error_ok=False):
 		for child in self.iter_children(error_ok=False):
 			#print(self, "->", child)
 			yield child
-			yield from child.iter_descendants(error_ok=False)
+			if not child.is_text():
+				yield from child.iter_descendants(error_ok=False)
+
+	# 子孫をすべてイテレート
+	async def async_iter_descendants(self, error_ok=False):
+		async for child in self.async_iter_children(error_ok=False):
+			#print(self, "->", child)
+			yield child
+			if not child.is_text():
+				async for child in child.async_iter_descendants(error_ok=False):
+					yield child
 
 	# 文を獲得
 	def get_sentences(self):
@@ -96,6 +123,10 @@ class LawElementBase(metaclass=ABCMeta):
 
 	@abstractmethod
 	def _iter_possible_children(self):
+		pass
+
+	@abstractmethod
+	def _async_iter_possible_children(self):
 		pass
 
 	def _check_child(self, e, error_ok):

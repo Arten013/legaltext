@@ -83,7 +83,11 @@ class TextBase(LawElementBase):
 
 	def __str__(self):
 		return str(self.parent)+str(self.get_number())
+
 	def is_leaf(self, error_ok):
+		return True
+
+	def is_text(self):
 		return True
 
 	def number_check(self):

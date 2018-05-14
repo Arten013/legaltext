@@ -24,6 +24,13 @@ class SqliteLawElementBase(LawElementBase):
             child.inheritance(i, num)
             yield child
 
+    async def _async_iter_possible_children(self):
+        async for i, etype, num in self.lawdata.conn.fetchrow(self.FIND_CHILDREN_STATEMENT, self.id):
+            child = globals()[etype](lawdata=self.lawdata, parent=self)
+            #print("hoge", i, num, child.__class__.__name__)
+            child.inheritance(i, num)
+            yield child
+
     def _check_child(self, *args, **kwargs):
         return True
 
@@ -45,6 +52,12 @@ class Root(RootBase, SqliteLawElementBase):
 
     def _iter_possible_children(self):
         for i, etype in self.conn.conn.cursor().execute(self.FIND_CHILDREN_STATEMENT, (self.lawdata.oid,)):
+            child = globals()[etype](lawdata=self.lawdata, parent=self)
+            child.inheritance(i, "0")
+            yield child
+
+    async def _async_iter_possible_children(self):
+        async for i, etype, num in self.lawdata.conn.fetchrow(self.FIND_CHILDREN_STATEMENT, (self.lawdata.oid,)):
             child = globals()[etype](lawdata=self.lawdata, parent=self)
             child.inheritance(i, "0")
             yield child

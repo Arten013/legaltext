@@ -1,6 +1,6 @@
 from collections import Counter
 import asyncio
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import concurrent.futures
 import PostgresTables as ts
 
 if __name__ == "__main__":
@@ -23,7 +23,6 @@ class Law(*PARENT_CLASSES):
     async def register(self, conn=None, string_table_flag=False):
         conn = self.conn if conn is None else conn
 
-
         # 読み込みしてない場合はraise
         if self.root is None:
             raise ValueError("You must load source ordinance file before registration.")
@@ -31,37 +30,48 @@ class Law(*PARENT_CLASSES):
         # 登録済みの場合
         self.oid = await self.search_oid(conn)
         if self.oid is not None:
-            print("already registered: ", self.name)
+            print("skip (already registered): ", self.name)
             return
 
         # 未登録の場合
         # 本体の登録            
-        await self.transaction_begin(conn)
-        try:
-            await self.register_law(conn)
-            self.oid = await self.search_oid(conn)
+        try_count = 0
+        while True:
+            await self.transaction_begin(conn)
+            try_count += 1
+            try:
+                await self.register_law(conn)
+                self.oid = await self.search_oid(conn)
 
-            # LawElementsの登録
-            for elem in self.root.iter_descendants():
-                await self.register_elements(conn, elem)
-                elem.id = await self.search_elements(conn, elem)
+                # LawElementsの登録
+                async for elem in self.root.async_iter_descendants():
+                    await self.register_elements(conn, elem)
+                    elem.id = await self.search_elements(conn, elem)
 
-                # stringを別登録する場合
-                if string_table_flag:
-                    for snum, text in enumerate(elem.texts):
-                        sid = await self.search_string(conn, text)
-                        if sid is None:
-                            await self.register_string(conn, text)
+                    # stringを別登録する場合
+                    if string_table_flag:
+                        for snum, text in enumerate(elem.texts):
                             sid = await self.search_string(conn, text)
-                        await self.register_string_edge(conn, text, sid, snum)
-            await self.transaction_end()
-            print("commit:", self.name)
-            return self
-        except:
-            await self.transaction_end(rollback=True)
-            print("rollback:", self.name)
-            raise
-            return None
+                            if sid is None:
+                                await self.register_string(conn, text)
+                                sid = await self.search_string(conn, text)
+                            await self.register_string_edge(conn, elem, sid, snum)
+                await self.transaction_end(rollback=False)
+                print("commit:", self.name)
+                return self
+            except LawError as e:
+                await self.transaction_end(rollback=True)
+                print("rollback:", self.name)
+                raise
+                return None
+            except:
+                await self.transaction_end(rollback=True)
+                if try_count <= 3:
+                    print("retry:", self.name)
+                    continue
+                print("rollback:", self.name)
+                raise
+                return None
 
               
 
@@ -102,7 +112,7 @@ def fill_ap_table(path_list):
 
 async def init_tables(conn, csv_path, loop=None):
     loop = asyncio.get_event_loop() if loop is None else loop
-    await conn.execute(ts.PREF_TABLE+ts.MUNI_TABLE+ts.ORD_TABLE+ts.ELEMENTS_TABLE)
+    await conn.execute(ts.PREF_TABLE+ts.MUNI_TABLE+ts.ORD_TABLE+ts.ELEMENTS_TABLE+ts.STRINGS_TABLE+ts.STRING_EDGES_TABLE)
     with open(csv_path) as f:
         reader = csv.reader(f)
         mc2pc = lambda mc: int(int(mc)/10000)
@@ -133,74 +143,49 @@ if __name__ == '__main__':
     async def test_init():
         GOV_PATH = os.path.join(os.path.dirname(__file__), "municode.csv")
         conn = await asyncpg.connect(user=TEST_USER, database=TEST_DB)
-        await conn.execute("DROP TABLE prefectures, ordinances, municipalities, elements;")
+        for t in ["prefectures", "municipalities", "ordinances", "elements", "strings", "string_edges"][::-1]:
+            f = await conn.fetchval("SELECT 1 FROM pg_stat_user_tables WHERE relname = $1;", t)
+            if f is not None:
+                await conn.execute("DROP TABLE {};".format(t))
         await init_tables(conn, GOV_PATH)
         await conn.close()
 
-    loop = asyncio.get_event_loop()
+    #loop = asyncio.get_event_loop()
     #loop.run_until_complete(test_init())
 
     def register_reikis_from_directory(path, db, user):
+        asyncio.set_event_loop(asyncio.new_event_loop())
         loop = asyncio.get_event_loop()
 
-        async def fgather(*futures):
-            done, pending = await asyncio.wait(futures)
-            print("done:", len(done), "pend", len(pending))
-            for d in done:
-                try:
-                    print("reg:", d.result())
-                except Exception as e:
-                    print(str(e))
-
-        def _path_proc(root, dirs, files, extentions):
-            if extentions is None or os.path.splitext(root)[1] in extentions:
-                    yield root
-            for file in files:
-                if extentions is None or os.path.splitext(file)[1] in extentions:
-                    yield os.path.join(root, file)
-
-        def enqueue_all_files(directory, extentions=None):
-            #print(directory)
-            executor = ThreadPoolExecutor(1)
-            loop = asyncio.get_event_loop()
-            futures = []
-            for root, dirs, files in os.walk(directory):
-                yield loop.run_in_executor(executor, _path_proc, root, dirs, files, extentions)
-
-        async def register(l, db, user):
+        async def register(path, db, user, string_table_flag):
+            l = await Law().async_load_from_path(path)
+            if l is None:
+                print("skip (load failure): ", l.name)
+                return
+            if not l.is_reiki():
+                print("skip (not reiki): ", l.name)
+                return
             try:
                 await l.async_connect(user=user, database=db)
-                await asyncio.ensure_future(l.register())
-                ret = l
+                await l.register(string_table_flag=string_table_flag)
             except Exception as e:
-                print(str(e))
-                ret = None
+                print("Exception: ", str(e))
+                raise
             finally:
                 if "conn" in l.__dict__:
                     await l.async_close()
-                return ret
 
         async def reg_from_path(path, db, user):
             loop = asyncio.get_event_loop()
             laws = []
-            with ThreadPoolExecutor(3) as executor:
-                for pf in enqueue_all_files(path, [".xml"]):
+            futures = []
+            load_futures = []
+            loading_laws = []
+            for path in find_all_files(path, [".xml"]):
+                futures.append(register(path, db, user, string_table_flag=True))
+                if len(futures) >= 10:
+                    await asyncio.wait(futures)
                     futures = []
-                    load_futures = []
-                    loading_laws = []
-                    await asyncio.wait([pf])
-                    for path in pf.result():
-                        l = Law()
-                        load_futures.append(loop.run_in_executor(executor, l.load_from_path, path))
-                        loading_laws.append(l)
-                    for f, l in zip(load_futures, loading_laws):
-                        await f
-                        if not l.is_reiki():
-                            continue
-                        print(l)
-                        futures.append(register(l, db, user))
-                    laws.extend(await asyncio.wait(futures))
-            return laws
 
         print("run")
         f = asyncio.ensure_future(reg_from_path(path, db, user))
@@ -208,34 +193,77 @@ if __name__ == '__main__':
         print("end")
         return f.result()
 
-    def register_all(path, conn):
+        """
+        async def enqueue(q, e, path):
+            loop = asyncio.get_event_loop()
+            for path in find_all_files(path, [".xml"]):
+                l = await Law().async_load_from_path(path)
+                await q.put(l)
+            e.set()
+            print("ENQUEUE FINISH")
+            q.join()
+
+        async def dequeue(q, e, db, user):
+            loop = asyncio.get_event_loop()
+            while True:
+                try:
+                    l = await asyncio.wait_for(q.get(), 0.1)
+                except asyncio.TimeoutError:
+                    print("TIMEOUT:", l)
+                    if q.empty() and e.is_set():
+                        #await q.join()
+                        break
+                    continue
+                await register(l, db, user, string_table_flag=True)
+                q.task_done()
+                #if len(futures) >= 1:
+                #    await asyncio.wait(futures)
+                #    futures = []
+            print("DEQUEUE FINISH")
+        """
+        #q = asyncio.Queue(10)
+        #e = asyncio.Event()
+        #f = asyncio.wait([enqueue(q, e, path)] + [dequeue(q, e, db, user)] * 5)
+
+
+    def register_all(path, db, user):
         c = Counter()
         error_count = 0
         reiki_count = 0
         loop = asyncio.get_event_loop()
         #i = 0
-        for p in glob.iglob(path+"**", recursive=True):    
-            if re.match("\d{6}", os.path.split(p)[1]):
-                ll = register_reikis_from_directory(p, conn)
-                for l in ll:
-                    try:
-                        c.update(l.count_elems())
-                        reiki_count += 1
-                    except LawError as e:
-                        error_count += 1
-                        continue
-                #i += 1
-                #if i > 1:
-                #   break
+        futures = []
+        with concurrent.futures.ProcessPoolExecutor(4) as e:
+            for p in glob.iglob(path+"**", recursive=True):
+                if re.match("\d{6}", os.path.split(p)[1]):
+                    futures.append(loop.run_in_executor(e, register_reikis_from_directory, p, db, user))
+                #if len(futures) >= 10:
+                #    break
+            loop.run_until_complete(asyncio.wait(futures))
+
+    """
+                    for l in ll:
+                        try:
+                            c.update(l.count_elems())
+                            reiki_count += 1
+                        except LawError as e:
+                            error_count += 1
+                            continue
+                    #i += 1
+                    #if i > 1:
+                    #   break
         print("reiki_count:", reiki_count)
         print("error_count:", error_count)
         print()
         print("-- structure counts --")
         for ename in BASIC_ETYPE_SET:
             print(ename, c[ename])
-
-    register_reikis_from_directory("/Users/KazuyaFujioka/research/legaltext/testset/23/230006", TEST_DB, TEST_USER)
-    #register_all("/Users/KazuyaFujioka/Documents/all_data/", conn)
+    """
+    #register_reikis_from_directory("/Users/KazuyaFujioka/Documents/all_data/23/230006", TEST_DB, TEST_USER)
+    from time import time
+    t1 = time()
+    register_all("/Users/KazuyaFujioka/Documents/all_data/", TEST_DB, TEST_USER)
+    print("time: ", time()-t1)
     #ll = [get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/{0:04}.xml".format(i)) for i in range(1,100)]
     #l1 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0001.xml")
     #l2 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0002.xml")

@@ -21,7 +21,7 @@ id SERIAL PRIMARY KEY,
 muni_id INTEGER REFERENCES municipalities(id),
 file_id INTEGER,
 name VARCHAR(500) NOT NULL,
-num VARCHAR(50) NOT NULL,
+num VARCHAR(500) NOT NULL,
 UNIQUE(muni_id, num)
 );CREATE INDEX IF NOT EXISTS file_id_index ON ordinances(file_id);
 """
@@ -39,7 +39,7 @@ id SERIAL PRIMARY KEY,
 parent_id INTEGER,
 ord_id INTEGER,
 etype ELEMENTTYPE,
-num VARCHAR(50),
+num NUMERIC,
 content TEXT,
 FOREIGN KEY(ord_id) REFERENCES ordinances(id),
 UNIQUE(parent_id, num, etype)
@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS elem_id_index ON elements(id);
 STRINGS_TABLE = """
 CREATE TABLE IF NOT EXISTS strings(
 id SERIAL PRIMARY KEY,
-string TEXT UNIQUE,
+string TEXT UNIQUE
 );
 CREATE INDEX IF NOT EXISTS string_index ON strings(string);
 """
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS string_edges(
 id SERIAL PRIMARY KEY,
 elem_id INTEGER,
 sentence_num INTEGER,
-string_id INTEGER REFERENCES strings(id)
-UNIQUE(elem_id, sentence_num),
+string_id INTEGER REFERENCES strings(id),
+UNIQUE(elem_id, sentence_num)
 );
 """

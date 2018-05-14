@@ -42,6 +42,11 @@ class LawAbstCls(object):
             e.structure_check()
         return True
 
+    async def async_structure_check(self):
+        async for e in self.root.async_iter_descendants():
+            e.structure_check()
+        return True
+
     def get_plaintext(self):
         return "".join(self.root.iter_descendants().sentences)
 
@@ -57,7 +62,7 @@ class LawAbstCls(object):
                 yield ce
 
     def is_reiki(self):
-        return True if re.match("(?:例条|則規)", self.name[::-1]) else False
+        return True if re.search("(?:条例|規則)", self.num) else False
 
     def count_elems(self, error_ok=False):
         c = Counter()

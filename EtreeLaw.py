@@ -4,8 +4,9 @@ import traceback
 import threading
 import os
 from pprint import pprint
-from mojimoji import zen_to_han
 from collections import Counter
+import asyncio
+import concurrent.futures 
 
 from LawError import *
 from EtreeLawElement import *
@@ -34,6 +35,25 @@ class EtreeLaw(LawAbstCls):
         except:
             print(traceback.format_exc())
             raise XMLStructureError(self)
+
+    async def async_load_from_path(self, path):
+        assert self.root is None
+        p = os.path.abspath(path)
+        p, file = os.path.split(p)
+        self.file_code = os.path.splitext(file)[0]
+        p, self.municipality_code = os.path.split(p)
+        _, self.prefecture_code = os.path.split(p)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(1) as e:
+                et = await asyncio.get_event_loop().run_in_executor(e, ET.parse, path)
+            self.root_etree = et.getroot()
+            root = Root(self)
+            root.inheritance(self.root_etree)
+            self.root = root
+        except:
+            print(traceback.format_exc())
+            raise XMLStructureError(self)
+        return self
 
 if __name__ == '__main__':
     ld = EtreeLaw()
