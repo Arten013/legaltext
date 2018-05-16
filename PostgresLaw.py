@@ -52,8 +52,8 @@ class PostgresLaw(LawAbstCls):
         f = await self.fetchrow("""
             SELECT
             ordinances.file_id as file_code,
-            ordinances.muni_id as municipality_code,
-            municipalities.pref_id as prefecture_code
+            ordinances.municipality_id as municipality_code,
+            municipalities.prefecture_id as prefecture_code
             FROM ordinances
             INNER JOIN municipalities ON municipalities.id = municipality_code
             WHERE ordinances.id = $1;

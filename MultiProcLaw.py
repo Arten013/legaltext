@@ -2,6 +2,7 @@ from collections import Counter
 import asyncio
 import concurrent.futures
 import PostgresTables as ts
+import subprocess
 
 if __name__ == "__main__":
     from TextIO import kansuji2arabic as kan_ara, find_all_files
@@ -51,10 +52,8 @@ class Law(*PARENT_CLASSES):
                     # stringを別登録する場合
                     if string_table_flag:
                         for snum, text in enumerate(elem.texts):
+                            await self.upsert_string(conn, text)
                             sid = await self.search_string(conn, text)
-                            if sid is None:
-                                await self.register_string(conn, text)
-                                sid = await self.search_string(conn, text)
                             await self.register_string_edge(conn, elem, sid, snum)
                 await self.transaction_end(rollback=False)
                 print("commit:", self.name)
@@ -85,34 +84,12 @@ async def get_lawdata(path, usr, db):
         raise
         return None
 
-def fill_ap_table(path_list):
-    # カウンター
-    file_count = 0
-    err_count = 0
-    elem_counter = Counter()
-    def mecab_preprocess(self, s):
-        return " ".join(list(Morph(s))[1:-1])
-    Law.preprocess = mecab_preprocess
-    # dbへの登録
-    with Pool(PROC_NUM) as p:
-        # Lawの取得（マルチプロセス） & イテレーション
-        for l in p.imap(Law, path_list):
-            file_count += 1
-            if l is None:
-                err_count += 1
-                continue
-            print(l.path)
-            elem_counter.update(l.count_elems())
-            if not l.is_reiki:
-                err_count += 1
-                continue
-            l.reg_db()
-    print("Extracted {0} files ({1} error raised)".format(file_count, err_count))
-    print("Registered {0} articles and {1} paragraphs".format(article_count, paragraph_count))
+def create_tables(user, db):
+    print(os.path.dirname(os.path.abspath(__file__)))
+    subprocess.run("psql -f {dir}/PostgresTables.sql -U {user} -d {db}".format(dir=os.path.dirname(os.path.abspath(__file__)), user=user, db=db))
 
 async def init_tables(conn, csv_path, loop=None):
     loop = asyncio.get_event_loop() if loop is None else loop
-    await conn.execute(ts.PREF_TABLE+ts.MUNI_TABLE+ts.ORD_TABLE+ts.ELEMENTS_TABLE+ts.STRINGS_TABLE+ts.STRING_EDGES_TABLE)
     with open(csv_path) as f:
         reader = csv.reader(f)
         mc2pc = lambda mc: int(int(mc)/10000)
@@ -126,7 +103,7 @@ async def init_tables(conn, csv_path, loop=None):
         for pn, pc in prefectures.items():
             await conn.execute("INSERT INTO prefectures(id, name) VALUES($1, $2);", pc, pn)
         for args in municipalities:
-            await conn.execute("INSERT INTO municipalities(id, pref_id, name) VALUES($1, $2, $3)", *args)
+            await conn.execute("INSERT INTO municipalities(id, prefecture_id, name) VALUES($1, $2, $3)", *args)
 
 
 
@@ -136,22 +113,19 @@ if __name__ == '__main__':
     import glob
     import re
 
-    TEST_DB = "ordinance"
+    TEST_DB = "ordinance_v2"
     TEST_USER = "KazuyaFujioka"
 
     #os.remove(TEST_DBFILE)
     async def test_init():
         GOV_PATH = os.path.join(os.path.dirname(__file__), "municode.csv")
+        create_tables(user=TEST_USER, db=TEST_DB)
         conn = await asyncpg.connect(user=TEST_USER, database=TEST_DB)
-        for t in ["prefectures", "municipalities", "ordinances", "elements", "strings", "string_edges"][::-1]:
-            f = await conn.fetchval("SELECT 1 FROM pg_stat_user_tables WHERE relname = $1;", t)
-            if f is not None:
-                await conn.execute("DROP TABLE {};".format(t))
         await init_tables(conn, GOV_PATH)
         await conn.close()
 
-    #loop = asyncio.get_event_loop()
-    #loop.run_until_complete(test_init())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test_init())
 
     def register_reikis_from_directory(path, db, user):
         asyncio.set_event_loop(asyncio.new_event_loop())

@@ -10,7 +10,7 @@ name VARCHAR(50) NOT NULL
 MUNI_TABLE = """
 CREATE TABLE IF NOT EXISTS municipalities(
 id INT PRIMARY KEY,
-pref_id SMALLINT NOT NULL REFERENCES prefectures(id),
+prefecture_id SMALLINT NOT NULL REFERENCES prefectures(id),
 name VARCHAR(50) NOT NULL
 );
 """
@@ -18,11 +18,11 @@ name VARCHAR(50) NOT NULL
 ORD_TABLE = """
 CREATE TABLE IF NOT EXISTS ordinances(
 id SERIAL PRIMARY KEY,
-muni_id INTEGER REFERENCES municipalities(id),
+municipality_id INTEGER REFERENCES municipalities(id),
 file_id INTEGER,
 name VARCHAR(500) NOT NULL,
 num VARCHAR(500) NOT NULL,
-UNIQUE(muni_id, num)
+UNIQUE(municipality_id, num)
 );CREATE INDEX IF NOT EXISTS file_id_index ON ordinances(file_id);
 """
 
@@ -37,11 +37,11 @@ END $$;
 CREATE TABLE IF NOT EXISTS elements(
 id SERIAL PRIMARY KEY,
 parent_id INTEGER,
-ord_id INTEGER,
+ordinance_id INTEGER,
 etype ELEMENTTYPE,
 num NUMERIC,
 content TEXT,
-FOREIGN KEY(ord_id) REFERENCES ordinances(id),
+FOREIGN KEY(ordinance_id) REFERENCES ordinances(id),
 UNIQUE(parent_id, num, etype)
 );
 

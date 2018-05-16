@@ -41,7 +41,7 @@ class Root(RootBase, SqliteLawElementBase):
     FIND_CHILDREN_STATEMENT = """
         SELECT id, etype
         FROM elements
-        WHERE ord_id = ?
+        WHERE ordinance_id = ?
         AND (etype='MainProvision' OR etype='SupplProvision')
         ORDER BY num ASC;
     """

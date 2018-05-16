@@ -108,3 +108,5 @@ venv.bak/
 
 testset/23
 *.csv
+*.DS_Store
+*.dtd
