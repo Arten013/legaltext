@@ -22,7 +22,7 @@ class RootBase(LawElementBase):
 	@property
 	def id(self):
 		try:
-			return int(self.lawdata.oid) * (-1)
+			return None
 		except:
 			raise
 			return -1

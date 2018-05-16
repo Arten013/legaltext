@@ -83,13 +83,15 @@ async def get_lawdata(path, usr, db):
     except:
         raise
         return None
-
+"""
 def create_tables(user, db):
     print(os.path.dirname(os.path.abspath(__file__)))
-    subprocess.run("psql -f {dir}/PostgresTables.sql -U {user} -d {db}".format(dir=os.path.dirname(os.path.abspath(__file__)), user=user, db=db))
-
+    subprocess.call("psql -f {dir}/PostgresTables.sql -U {user} -d {db}".format(dir=os.path.dirname(os.path.abspath(__file__)), user=user, db=db), shell=True)
+"""
 async def init_tables(conn, csv_path, loop=None):
     loop = asyncio.get_event_loop() if loop is None else loop
+    with open(os.path.join( os.path.dirname(os.path.abspath(__file__) ), "PostgresTables.sql")) as f:
+        await conn.execute(f.read())
     with open(csv_path) as f:
         reader = csv.reader(f)
         mc2pc = lambda mc: int(int(mc)/10000)
@@ -119,7 +121,7 @@ if __name__ == '__main__':
     #os.remove(TEST_DBFILE)
     async def test_init():
         GOV_PATH = os.path.join(os.path.dirname(__file__), "municode.csv")
-        create_tables(user=TEST_USER, db=TEST_DB)
+        #create_tables(user=TEST_USER, db=TEST_DB)
         conn = await asyncpg.connect(user=TEST_USER, database=TEST_DB)
         await init_tables(conn, GOV_PATH)
         await conn.close()
@@ -233,11 +235,11 @@ if __name__ == '__main__':
         for ename in BASIC_ETYPE_SET:
             print(ename, c[ename])
     """
-    #register_reikis_from_directory("/Users/KazuyaFujioka/Documents/all_data/23/230006", TEST_DB, TEST_USER)
-    from time import time
-    t1 = time()
-    register_all("/Users/KazuyaFujioka/Documents/all_data/", TEST_DB, TEST_USER)
-    print("time: ", time()-t1)
+    register_reikis_from_directory(os.path.join(os.path.dirname(__file__), "testset/23/230006"), TEST_DB, TEST_USER)
+    #from time import time
+    #t1 = time()
+    #register_all("/Users/KazuyaFujioka/Documents/all_data/", TEST_DB, TEST_USER)
+    #print("time: ", time()-t1)
     #ll = [get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/{0:04}.xml".format(i)) for i in range(1,100)]
     #l1 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0001.xml")
     #l2 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0002.xml")
