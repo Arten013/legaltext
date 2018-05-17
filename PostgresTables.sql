@@ -144,8 +144,7 @@ etype ELEMENTTYPE,
 num NUMERIC,
 content TEXT,
 UNIQUE(parent_id, num, etype),
-FOREIGN KEY(ordinance_id) REFERENCES ordinances(id) ON DELETE RESTRICT,
-FOREIGN KEY(parent_id) REFERENCES elements(id) ON DELETE RESTRICT
+FOREIGN KEY(ordinance_id) REFERENCES ordinances(id) ON DELETE RESTRICT
 );
 CREATE INDEX elements_ordinance_id_idx ON elements(ordinance_id);
 CREATE INDEX elements_parent_id_idx ON elements(parent_id);

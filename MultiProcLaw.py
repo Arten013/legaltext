@@ -235,11 +235,11 @@ if __name__ == '__main__':
         for ename in BASIC_ETYPE_SET:
             print(ename, c[ename])
     """
-    register_reikis_from_directory(os.path.join(os.path.dirname(__file__), "testset/23/230006"), TEST_DB, TEST_USER)
-    #from time import time
-    #t1 = time()
-    #register_all("/Users/KazuyaFujioka/Documents/all_data/", TEST_DB, TEST_USER)
-    #print("time: ", time()-t1)
+    #register_reikis_from_directory(os.path.join(os.path.dirname(__file__), "testset/23/230006"), TEST_DB, TEST_USER)
+    from time import time
+    t1 = time()
+    register_all("/Users/KazuyaFujioka/Documents/all_data/", TEST_DB, TEST_USER)
+    print("time: ", time()-t1)
     #ll = [get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/{0:04}.xml".format(i)) for i in range(1,100)]
     #l1 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0001.xml")
     #l2 = get_lawdata("/Users/KazuyaFujioka/Documents/all_data/23/230006/0002.xml")
