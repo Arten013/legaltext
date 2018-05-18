@@ -5,6 +5,7 @@ import re
 from abc import abstractmethod
 from LawElementNumber import LawElementNumber
 from TextIO import kansuji2arabic as kan_ara
+import unicodedata
 
 class RootBase(LawElementBase):
 	def __init__(self, lawdata, parent=None):
@@ -77,9 +78,13 @@ class TextBase(LawElementBase):
 		self.etypes = parent.etypes
 		self._num = None
 		self.id = None
+		self._child = []
 
 	def inheritance(self):
-		self.texts = self.extract_text()
+		self.texts = list(map(self.preprocess, self.extract_text()))
+
+	def preprocess(self, s):
+		return unicodedata.normalize("NFKC", s)
 
 	def __str__(self):
 		return str(self.parent)+str(self.get_number())
@@ -96,10 +101,10 @@ class TextBase(LawElementBase):
 	def brothers_check(self):
 		return True
 
-	def iter_children(self, error_ok=False):
+	def iter_children(self, *args, **kwargs):
 		return []
 
-	def iter_descendants(self, error_ok=False):
+	def iter_descendants(self, *args, **kwargs):
 		return []
 
 	def get_sentences(self):

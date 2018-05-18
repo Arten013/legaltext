@@ -101,7 +101,7 @@ class Article(BasicElementBase, ETreeLawElementBase):
 class ETreeSentenceBase(SentenceBase, ETreeLawElementBase):
     def inheritance(self, root):
         self.root = root
-        self.texts = self.extract_text()
+        super().inheritance()
 
     def extract_text(self):
         return list(get_text(s, "") for s in self.root.findall('./Sentence'.format(self.__class__.__name__)))

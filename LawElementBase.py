@@ -1,5 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from LawError import *
+import asyncio
+import queue
 
 # 法令テキストの要素クラスのベース
 class LawElementBase(metaclass=ABCMeta):
@@ -46,6 +48,7 @@ class LawElementBase(metaclass=ABCMeta):
 	def structure_check(self):
 		self.parent_check()
 		self.brothers_check()
+		self.num
 		#self.number_check()
 		return True
 
@@ -101,21 +104,52 @@ class LawElementBase(metaclass=ABCMeta):
 		return
 
 	# 子孫をすべてイテレート
-	def iter_descendants(self, error_ok=False):
-		for child in self.iter_children(error_ok=False):
-			#print(self, "->", child)
-			yield child
-			if not child.is_text():
-				yield from child.iter_descendants(error_ok=False)
+	def iter_descendants(self, error_ok=False, bfs=False):
+		if bfs is True:
+			q = queue.Queue()
+			for child in self.iter_children(error_ok=error_ok):
+				q.put(child)
+			while not q.is_empty():
+				yield q.get()
+				for child in e.iter_children(error_ok=error_ok):
+					q.put(child)
+			q.join()
+		else:
+			for child in self.iter_children(error_ok=error_ok):
+				#print(self, "->", child)
+				yield child
+				if not child.is_text():
+					yield from child.iter_descendants(error_ok=error_ok, bfs=False)
 
 	# 子孫をすべてイテレート
-	async def async_iter_descendants(self, error_ok=False):
-		async for child in self.async_iter_children(error_ok=False):
-			#print(self, "->", child)
-			yield child
-			if not child.is_text():
-				async for child in child.async_iter_descendants(error_ok=False):
-					yield child
+	async def async_iter_descendants(self, error_ok=False, bfs=False):
+		if bfs is True:
+			q = asyncio.Queue()
+			async for child in self.async_iter_children(error_ok=error_ok):
+				await q.put(child)
+			while not q.is_empty():
+				yield await q.get()
+				async for child in e.async_iter_children(error_ok=error_ok):
+					await q.put(child)
+			await q.join()
+		else:
+			async for child in self.async_iter_children(error_ok=False):
+				#print(self, "->", child)
+				yield child
+				if not child.is_text():
+					async for child in child.async_iter_descendants(error_ok=False, bfs=False):
+						yield child
+
+	# 子孫をすべてイテレート
+	async def async_iter_descendants_by_hierarchy(self, error_ok=False):
+		children = [child async for child in self.async_iter_children(error_ok=error_ok)]
+		while len(children) > 0:
+			yield children
+			next_children = []
+			for e in children:
+				next_children.extend([child async for child in e.async_iter_children(error_ok=error_ok)])
+			children = next_children
+
 
 	# 文を獲得
 	def get_sentences(self):
