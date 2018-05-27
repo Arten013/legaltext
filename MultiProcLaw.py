@@ -46,13 +46,6 @@ class Law(*PARENT_CLASSES):
 
         # 未登録の場合
         # 本体の登録 
-        """
-        try_count = 0 
-        while True:
-            await self.transaction_begin(conn)
-            try:
-                try_count += 1  
-        """  
         self.oid = await self.register_law(conn)
         if self.oid is None:
             #print("skip (duplication):", self.name)
@@ -78,33 +71,18 @@ class Law(*PARENT_CLASSES):
                     edges.append([elem.id, sid, snum])
         if len(edges) > 0:
             await self.register_element_string_many(conn, edges)
-        #await self.transaction_end(rollback=False)
-        #print("commit:", self.name)
-        #print("reg:", self.name)
         await conn.close()
         del conn
         return self
-        """
-            except LawError as e:
-                print("rollback (structure error)")
-                print(e)
-                return 
-            except Exception as e:
-                await self.transaction_end(rollback=True)
-                if try_count <= 3:
-                    print("retry:", self.name)
-                    continue
-                print("rollback:", self.name)
-                print(e)
-                return
-        """
+
+
 
               
 
 async def get_lawdata(path, usr, db):
     try:
         ld = Law()
-        ld.load_from_path(path)
+        ld.load(path)
         await ld.async_connect(user=usr, database=db)
         return ld
     except:
@@ -158,7 +136,7 @@ if __name__ == '__main__':
         loop = asyncio.get_event_loop()
 
         async def register(path, db, user, string_table_flag):
-            l = await Law().async_load_from_path(path)
+            l = await Law().async_load(path)
             if l is None:
                 #print("skip (load failure): ", l.name)
                 return
@@ -193,7 +171,7 @@ if __name__ == '__main__':
         async def enqueue(q, e, path):
             loop = asyncio.get_event_loop()
             for path in find_all_files(path, [".xml"]):
-                l = await Law().async_load_from_path(path)
+                l = await Law().async_load(path)
                 await q.put(l)
             e.set()
             print("ENQUEUE FINISH")

@@ -10,6 +10,10 @@ class PostgresLaw(LawAbstCls):
     conn_counter = 0
 
     @property
+    def identifier(self):
+        return self.oid
+
+    @property
     def oid(self):
         if "_oid" not in self.__dict__:
             self._oid = None
@@ -19,36 +23,27 @@ class PostgresLaw(LawAbstCls):
     def oid(self, i):
         self._oid = i
 
+    @property
+    def loop(self):
+        if "loop" not in self.__dict__:
+            self.loop = asyncio.get_event_loop()
+
     async def async_close(self):
         assert self.conn is not None
         await self.conn.close()
-        del self.conn
-        PostgresLaw.conn_counter -= 1
 
     def connect(self, *args, **kwargs):
-        self.loop = asyncio.get_event_loop()
         self.conn = self.loop.run_until_complete(asyncio.ensure_future(self.async_connect(*args, **kwargs)))
 
     async def async_connect(self, *args, **kwargs):
-        self.loop = asyncio.get_event_loop()
-        while True:
-            try:
-                self.conn = await asyncpg.connect(*args, **kwargs)
-                PostgresLaw.conn_counter += 1
-                break
-            except asyncpg.exceptions.TooManyConnectionsError as e:
-                print(e)
-                print("Waiting for connection acquisition", self.name, PostgresLaw.conn_counter)
-                task = asyncio.Task.current_task(self.loop)
-                asyncio.wait(task)
-                await asyncio.sleep(1)
+        self.conn = await asyncpg.connect(*args, **kwargs)
 
-        #self.executor = ThreadPoolExecutor(10)
+    def load(self, oid):
+        self.loop.run_until_complete(self.async_load(oid))
+        return self
 
-    async def load_from_db(self, ident, conn):
-        assert self.root is None
-        self.conn = conn
-        self.oid = ident
+    async def async_load(self, ident=None):
+        self.oid = self.oid if ident is None else ident
         f = await self.fetchrow("""
             SELECT
             ordinances.file_id as file_code,
@@ -59,7 +54,7 @@ class PostgresLaw(LawAbstCls):
             WHERE ordinances.id = $1;
         """, self.oid)
         self.__dict__.update(f)
-        self.root = Root(self)
+        return Root(self)
 
     def _get_law_name(self):
         self.conn.execute("SELECT name FROM ordinance WHERE id = $1", self.oid)

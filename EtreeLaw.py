@@ -20,43 +20,57 @@ def get_text(b, e_val):
         return e_val
 
 class EtreeLaw(LawAbstCls):
-    def load_from_path(self, path):
-        assert self.root is None
-        p = os.path.abspath(path)
-        p, file = os.path.split(p)
+    @property
+    def identifier(self):
+        return int(re.sub("/", "", self.code[2:]))
+
+    def set(self, path):
+        self.path = path
+
+    def _path_to_code(self):
+        p, file = os.path.split(self.path)
         self.file_code = os.path.splitext(file)[0]
         p, self.municipality_code = os.path.split(p)
         _, self.prefecture_code = os.path.split(p)
+
+    def _reg_metadata(self, root):
+        self._name = root.get_law_name()
+        self._num = root.get_law_num()
+
+    def load(self, path=None):
+        self.path = os.path.abspath(self.path if path is None else path)
+        print(self.path)
+        self._path_to_code()
         try:
-            self.root_etree = ET.parse(path).getroot()
+            root_etree = ET.parse(self.path).getroot()
             root = Root(self)
-            root.inheritance(self.root_etree)
-            self.root = root
+            root.inheritance(root_etree)
+            if self._name is None or self._num is None:
+                self._reg_metadata(root)
+            return root
         except:
             print(traceback.format_exc())
             raise XMLStructureError(self)
 
-    async def async_load_from_path(self, path):
-        assert self.root is None
-        p = os.path.abspath(path)
-        p, file = os.path.split(p)
-        self.file_code = os.path.splitext(file)[0]
-        p, self.municipality_code = os.path.split(p)
-        _, self.prefecture_code = os.path.split(p)
+    async def async_load(self, path=None):
+        self.path = os.path.abspath(self.path if path is None else path)
+        print(self.path)
+        self._path_to_code()
         try:
             with concurrent.futures.ThreadPoolExecutor(1) as e:
                 et = await asyncio.get_event_loop().run_in_executor(e, ET.parse, path)
-            self.root_etree = et.getroot()
+            root_etree = et.getroot()
             root = Root(self)
-            root.inheritance(self.root_etree)
-            self.root = root
+            root.inheritance(root_etree)
+            if self._name is None or self._num is None:
+                self._reg_metadata(root)
+            return root
         except:
             print(traceback.format_exc())
             raise XMLStructureError(self)
-        return self
 
 if __name__ == '__main__':
     ld = EtreeLaw()
-    ld.load_from_path("testset/01/000001/0001.xml")
+    ld.load("testset/01/000001/0001.xml")
     for s in ld.iter_sentences():
         print(s)

@@ -150,6 +150,10 @@ class LawElementBase(metaclass=ABCMeta):
 				next_children.extend([child async for child in e.async_iter_children(error_ok=error_ok)])
 			children = next_children
 
+	async def async_iter_sentence(self):
+		async for ce in self.async_iter_descendants():
+			yield ce.get_sentences()
+
 
 	# 文を獲得
 	def get_sentences(self):

@@ -1,21 +1,20 @@
-DROP TABLE IF EXISTS dataset;
+
+DROP TABLE IF EXISTS models;
+DROP TABLE IF EXISTS datasets;
 CREATE TABLE datasets(
 id SERIAL PRIMARY KEY,
-name VARCHAR(50),
+name VARCHAR(50) NOT NULL UNIQUE,
+unit_type ELEMENTTYPE,
+ordinance_id_list BIGINT[] NOT NULL
 );
 
-CREATE TABLE dataset_elements(
-dataset_id INTEGER REFERENCES datasets(id) ON DELETE RESTRICT,
-element_id INTEGER REFERENCES elements(id) ON DELETE RESTRICT,
-)
-CREATE INDEX dataset_elements_dataset_id_idx ON dataset_elements(dataset_id)
-CREATE INDEX dataset_elements_element_id_idx ON dataset_elements(element_id)
-
-CREATE TABLE IF NOT EXISTS models(
+DROP TABLE IF EXISTS models;
+CREATE TABLE models(
 id SERIAL PRIMARY KEY,
 name VARCHAR(50) NOT NULL,
-model_type VARCHAR(50)
+model_type VARCHAR(50),
 dataset_id INTEGER NOT NULL,
-FOREIGN KEY(dataset_id) REFERENCES datasets(id)
-UNIQUE(name, model_type)
+FOREIGN KEY(dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
+UNIQUE(name, model_type, dataset_id)
 );
+CREATE INDEX models_dataset_id_idx ON models(dataset_id);

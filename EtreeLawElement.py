@@ -62,10 +62,10 @@ class Root(RootBase, ETreeLawElementBase):
             yield child
 
     def get_law_name(self):
-        return get_text(self.root.find('Law/LawBody/LawTitle'), 'UNK')
+        return get_text(self.root.find('Law/LawBody/LawTitle'), None)
         
     def get_law_num(self):
-        raw_text = get_text(self.root.find('Law/LawNum'), 'UNK')
+        raw_text = get_text(self.root.find('Law/LawNum'), None)
         if raw_text is None:
             return None
         #tmp = zen_to_han(raw_text, kana=False, ascii=False)

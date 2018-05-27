@@ -14,18 +14,26 @@ class LawAbstCls(object):
     def __str__(self):
         return "{name} ({num})".format(name=self.name, num=self.num)
 
+    def connect(self, *args, **kwargs):
+        pass
+
+    async def async_connect(self, *args, **kwargs):
+        pass
+
+    @classmethod
+    def check_source(cls, source):
+        return True
+
+    @property
+    def identifier(self):
+        pass
+
     @property
     def name(self):
-        if self._name is None:
-            if self.root is not None:
-                self._name = self.root.get_law_name()
         return "UNK" if self._name is None else self._name
 
     @property
     def num(self):
-        if self._num is None:
-            if self.root is not None:
-                self._num = self.root.get_law_num()
         return "UNK" if self._num is None else self._num
 
     @property
